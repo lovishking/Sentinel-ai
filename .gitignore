@@ -1,0 +1,21 @@
+# Environments
+venv/
+.venv/
+env/
+.env
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest
+.pytest_cache/
+
+# VS Code
+.vscode/
+
+# SQLite
+*.sqlite3
+
+# Ignore alembic versions if they are auto-generated and local? No, keep migrations.
