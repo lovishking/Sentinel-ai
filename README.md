@@ -119,7 +119,7 @@ cp .env.example .env   # or edit .env directly
 
 Edit `.env`:
 ```env
-DATABASE_URL=postgresql://sentinel:password@postgres:5432/sentinel_db
+DATABASE_URL=postgresql+psycopg2://sentinel:password@postgres:5432/sentinel_db
 REDIS_URL=redis://redis:6379/0
 GEMINI_API_KEY=your-gemini-api-key
 GITHUB_TOKEN=ghp_xxxxxxxxxxxx          # optional

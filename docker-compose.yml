@@ -8,7 +8,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://sentinel:password@postgres:5432/sentinel_db
+      - DATABASE_URL=postgresql+psycopg2://sentinel:password@postgres:5432/sentinel_db
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       postgres:

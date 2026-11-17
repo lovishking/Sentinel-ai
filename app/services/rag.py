@@ -1,5 +1,7 @@
 import os
 import ast
+import hashlib
+import re
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.models.domain import KnowledgeChunk, Incident, Fix, IncidentStatus
@@ -14,15 +16,37 @@ try:
 except ImportError:
     genai = None
 
+def _local_embedding(text_content: str) -> list[float]:
+    """Create a stable 3072-dimensional fallback vector without network access."""
+    vector = [0.0] * 3072
+    for token in _tokens(text_content):
+        digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+        index = int.from_bytes(digest[:4], "little") % len(vector)
+        sign = 1.0 if digest[4] & 1 else -1.0
+        vector[index] += sign
+    magnitude = sum(value * value for value in vector) ** 0.5
+    return [value / magnitude for value in vector] if magnitude else vector
+
+
+def _tokens(text_content: str) -> list[str]:
+    # Split camel case too, so NoneType and none type can match.
+    normalized = re.sub(r"([a-z])([A-Z])", r"\1 \2", text_content)
+    return re.findall(r"[a-z0-9]+", normalized.lower())
+
+
 def get_embedding(text_content: str) -> list[float]:
-    if not genai or not settings.GEMINI_API_KEY:
-        raise ValueError("Gemini SDK not initialized. Ensure google-generativeai is installed and GEMINI_API_KEY is set.")
-    
-    result = genai.embed_content(
-        model="models/gemini-embedding-001",
-        content=text_content
-    )
-    return result['embedding']
+    """Use Gemini embeddings when available, with a deterministic local fallback."""
+    if genai and settings.GEMINI_API_KEY:
+        try:
+            result = genai.embed_content(
+                model="models/gemini-embedding-001",
+                content=text_content,
+            )
+            return result["embedding"]
+        except Exception:
+            # Quota limits and transient network errors should not disable local use.
+            pass
+    return _local_embedding(text_content)
 
 def chunk_and_embed_repo(db: Session):
     repo_path = "sample_repo"
@@ -130,20 +154,56 @@ def seed_past_incidents(db: Session):
 
 
 def query_knowledge_base(db: Session, query: str, top_k: int = 3) -> list[dict]:
-    query_embedding = get_embedding(query)
-    
-    # Use pgvector's L2 distance operator (<->)
-    distance_col = KnowledgeChunk.embedding.l2_distance(query_embedding).label('distance')
-    chunks = db.query(KnowledgeChunk, distance_col).order_by(distance_col).limit(top_k).all()
-    
+    if genai and settings.GEMINI_API_KEY:
+        try:
+            query_embedding = genai.embed_content(
+                model="models/gemini-embedding-001",
+                content=query,
+            )["embedding"]
+            distance_col = KnowledgeChunk.embedding.l2_distance(query_embedding).label("distance")
+            vector_matches = (
+                db.query(KnowledgeChunk, distance_col)
+                .order_by(distance_col)
+                .limit(top_k)
+                .all()
+            )
+            return [
+                {
+                    "id": chunk.id,
+                    "content": chunk.content,
+                    "source_type": chunk.source_type,
+                    "metadata": chunk.metadata_json,
+                    "distance": float(distance),
+                }
+                for chunk, distance in vector_matches
+            ]
+        except Exception:
+            # Fall through to local lexical retrieval on quota/network errors.
+            pass
+
+    chunks = db.query(KnowledgeChunk).all()
+    query_tokens = set(_tokens(query))
+    if not chunks:
+        return []
+
+    # Lexical ranking is reliable for local fallback vectors and makes exact
+    # stack traces useful even when Gemini embedding quota is exhausted.
+    ranked = []
+    for chunk in chunks:
+        content_tokens = set(_tokens(chunk.content))
+        overlap = len(query_tokens & content_tokens)
+        phrase_bonus = 1 if query.strip().lower() in chunk.content.lower() else 0
+        score = overlap + phrase_bonus
+        ranked.append((chunk, score))
+    ranked.sort(key=lambda item: item[1], reverse=True)
+
     results = []
-    for chunk, dist in chunks:
+    for chunk, score in ranked[:top_k]:
         results.append({
             "id": chunk.id,
             "content": chunk.content,
             "source_type": chunk.source_type,
             "metadata": chunk.metadata_json,
-            "distance": float(dist)
+            "distance": float(1.0 / (score + 1.0))
         })
-        
     return results

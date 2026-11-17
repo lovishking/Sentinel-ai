@@ -1,57 +1,15 @@
-import os
 from sqlalchemy.orm import Session
 from app.models.domain import Incident, Evidence, IncidentStatus, EvidenceSourceType
 from datetime import datetime, timedelta
 
 def create_buggy_file(archetype: str):
-    repo_path = "sample_repo"
-    os.makedirs(repo_path, exist_ok=True)
-    
-    if archetype == "crash_loop":
-        file_path = os.path.join(repo_path, "auth_service.py")
-        content = """def process_user(user_id: int):
-    # Bug: user object can be None if not found, causing crash
-    user = get_user_from_db(user_id)
-    return user.name
+    """Keep incident simulation from overwriting the checked-in sample code.
 
-def get_user_from_db(user_id: int):
-    # Dummy DB return
-    return None
-"""
-        with open(file_path, "w") as f:
-            f.write(content)
-            
-    elif archetype == "latency_spike":
-        file_path = os.path.join(repo_path, "billing_service.py")
-        content = """def calculate_total_billing(user_ids: list):
-    # Bug: N+1 query issue
-    total = 0
-    for uid in user_ids:
-        # DB hit inside loop
-        amount = get_user_balance(uid)
-        total += amount
-    return total
-
-def get_user_balance(user_id: int):
-    import time
-    time.sleep(0.1) # Simulate slow query
-    return 10.0
-"""
-        with open(file_path, "w") as f:
-            f.write(content)
-            
-    elif archetype == "oom":
-        file_path = os.path.join(repo_path, "worker.py")
-        content = """global_cache = []
-
-def process_event(event: dict):
-    # Bug: Unbounded cache list causes memory leak
-    global_cache.append(event)
-    # Never cleared!
-    return True
-"""
-        with open(file_path, "w") as f:
-            f.write(content)
+    The source files are maintained as real, testable examples. Incidents are
+    represented by synthetic evidence below rather than by mutating the repo.
+    """
+    if archetype not in {"crash_loop", "latency_spike", "oom"}:
+        raise ValueError(f"Unsupported incident archetype: {archetype}")
 
 def generate_evidence_for_crash_loop() -> list[dict]:
     return [

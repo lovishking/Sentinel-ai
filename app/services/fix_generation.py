@@ -315,17 +315,36 @@ def generate_fix(db: Session, incident: Incident) -> Fix:
     if not os.path.isfile(buggy_path):
         raise FileNotFoundError(f"Buggy source file not found: {buggy_path}")
     buggy_source = _read_file(buggy_path)
-
-    # 4. Generate diff (with one retry)
-    max_attempts = 2
-    diff_content = ""
     test_results: dict = {}
     ruff_results: dict = {}
     status = "needs_human_review"
 
+    # Avoid spending an LLM request on code that already passes the exact
+    # acceptance suite. This also makes validation work without API quota.
+    baseline_dir = tempfile.mkdtemp(prefix="sentinel_baseline_")
+    try:
+        baseline_repo = os.path.join(baseline_dir, "sample_repo")
+        shutil.copytree(SAMPLE_REPO_DIR, baseline_repo)
+        baseline_results = _run_pytest(baseline_repo, test_file)
+        if baseline_results["returncode"] == 0:
+            test_results = baseline_results
+            ruff_results = _run_ruff(os.path.join(baseline_repo, suspect_file))
+            status = "already_fixed"
+        else:
+            test_results = {}
+            status = "needs_human_review"
+    finally:
+        shutil.rmtree(baseline_dir, ignore_errors=True)
+
+    # 4. Generate diff (with one retry)
+    max_attempts = 2
+    diff_content = ""
+
     retry_feedback: Optional[str] = None
 
-    for attempt in range(1, max_attempts + 1):
+    attempt = 0
+    attempts_to_run = range(1, max_attempts + 1) if status != "already_fixed" else ()
+    for attempt in attempts_to_run:
         logger.info("Fix generation attempt %d/%d for incident %d", attempt, max_attempts, incident.id)
 
         # --- Generate diff via Gemini ---

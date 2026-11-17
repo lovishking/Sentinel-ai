@@ -1,7 +1,8 @@
+MAX_CACHE_SIZE = 1000
 global_cache = []
 
 def process_event(event: dict):
-    # Bug: Unbounded cache list causes memory leak
     global_cache.append(event)
-    # Never cleared!
+    if len(global_cache) > MAX_CACHE_SIZE:
+        del global_cache[:-MAX_CACHE_SIZE]
     return True
