@@ -102,48 +102,26 @@ and the rest of the pipeline works unchanged.
 
 ## Quick Start
 
-### Prerequisites
-- Docker & Docker Compose
-- A Google Gemini API key ([get one here](https://aistudio.google.com/apikey))
-- *(Optional)* A GitHub personal access token with `repo` scope
+### Windows
 
-### 1. Clone & Configure
+Start Docker Desktop with Linux containers enabled, then double-click **run.bat** in the project folder. The launcher creates `.env` on first use, builds the stack, and opens the [interactive API docs](http://localhost:8000/docs) after migrations finish and the API responds.
 
-```bash
-git clone https://github.com/<your-username>/sentinel-ai.git
-cd sentinel-ai
+For AI investigations and fix generation, set `GEMINI_API_KEY` in `.env`. For pull request creation, also set `GITHUB_TOKEN` and `GITHUB_REPO` (in `owner/repo` form). Run the launcher again after editing the file.
 
-# Set your API keys
-cp .env.example .env   # or edit .env directly
-```
+### From a terminal
 
-Edit `.env`:
-```env
-DATABASE_URL=postgresql+psycopg2://sentinel:password@postgres:5432/sentinel_db
-REDIS_URL=redis://redis:6379/0
-GEMINI_API_KEY=your-gemini-api-key
-GITHUB_TOKEN=ghp_xxxxxxxxxxxx          # optional
-GITHUB_REPO=username/sentinel-sample-repo  # optional
-```
-
-### 2. Start the Stack
+Use Docker Compose with support for `up --wait`.
 
 ```bash
-docker compose up -d
+git clone https://github.com/lovishking/Sentinel-ai.git
+cd Sentinel-ai
+cp .env.example .env
+docker compose up --build --wait --wait-timeout 180
 ```
 
-This starts:
-- **API server** on `http://localhost:8000` (FastAPI + uvicorn)
-- **PostgreSQL 15** with pgvector extension
-- **Redis 7** (for future async job queue)
+Open the [API docs](http://localhost:8000/docs). To see startup errors, run `docker compose logs`. To stop the stack and retain the database, run `docker compose down` in the project folder.
 
-### 3. Run Database Migrations
-
-```bash
-docker compose exec api alembic upgrade head
-```
-
-### 4. Run the Demo
+### Run the Demo
 
 See **[DEMO.md](DEMO.md)** for the full step-by-step walkthrough.
 
